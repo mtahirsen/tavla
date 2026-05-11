@@ -14,8 +14,14 @@ const roomCodeEl = document.getElementById('room-code');
 const btnCopy = document.getElementById('btn-copy');
 const diceDisplay = document.getElementById('dice-display');
 const btnRoll = document.getElementById('btn-roll');
-const messageEl = document.getElementById('message');
 const btnResign = document.getElementById('btn-resign');
+const chatMessages = document.getElementById('chat-messages');
+const chatInput = document.getElementById('chat-input');
+const chatSendBtn = document.getElementById('btn-chat-send');
+const btnVoice = document.getElementById('btn-voice');
+const remoteAudio = document.getElementById('remote-audio');
+const btnHelp = document.getElementById('btn-help');
+const helpTooltip = document.getElementById('help-tooltip');
 const winnerOverlay = document.getElementById('winner-overlay');
 const winnerNameEl = document.getElementById('winner-name');
 const btnNewGame = document.getElementById('btn-new-game');
@@ -37,6 +43,13 @@ let playerCount = 0;
 let playersInfo = [];           // [{color, nick, avatar}]
 let turnDeadlineMs = null;      // sunucudan gelen son hamle deadline'ı
 let moveTimerSec = 0;           // odanın hamle süresi ayarı (s)
+let lastSystemMsg = null;       // chat'e tekrar push etmemek için
+let peerConn = null;            // RTCPeerConnection (sesli sohbet)
+let localStream = null;
+let voiceLocal = false;         // benim mikrofonum açık mı
+let voiceRemote = false;        // karşı tarafın durumu (server üzerinden)
+let audioCtx = null;            // konuşma seviyesini ölçmek için
+let speakAnalysers = { local: null, remote: null };
 let dragSource = null;            // sürüklenen pulun kaynağı (0-23 veya 'bar')
 let dragDestinations = [];        // sürüklenen pulun geçerli hedefleri
 let ghostEl = null;               // imleci takip eden hayalet pul
@@ -500,7 +513,7 @@ function destroyGhost() {
 function executeMoveSequence(seq) {
   for (const step of seq) {
     socket.emit('move', { from: step.from, to: step.to, die: step.die }, (resp) => {
-      if (resp && resp.error) messageEl.textContent = resp.error;
+      if (resp && resp.error) pushChatSystem(resp.error);
     });
   }
 }
@@ -799,8 +812,11 @@ function updateUI() {
   // Oyuncu kartlarını güncelle
   updatePlayerCards();
 
-  // Message
-  messageEl.textContent = gameState.message || '';
+  // gameState.message değiştiğinde chat'e sistem mesajı olarak akıt
+  if (gameState.message && gameState.message !== lastSystemMsg) {
+    pushChatSystem(gameState.message);
+    lastSystemMsg = gameState.message;
+  }
 
   // Winner
   if (gameState.winner) {
@@ -874,6 +890,245 @@ function tickTimer() {
 }
 setInterval(tickTimer, 250);
 
+// ============ CHAT ============
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function pushChat({ from, nick, avatar, text }) {
+  const row = document.createElement('div');
+  const isMe = from === myColor;
+  row.className = 'chat-msg' + (isMe ? ' me' : '');
+  row.innerHTML = `
+    <div class="avatar">${escHtml(avatar || '🦊')}</div>
+    <div>
+      <div class="nick">${escHtml(nick || 'Oyuncu')}</div>
+      <div class="bubble">${escHtml(text)}</div>
+    </div>
+  `;
+  chatMessages.appendChild(row);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+function pushChatSystem(text) {
+  if (!text) return;
+  const row = document.createElement('div');
+  row.className = 'chat-msg system';
+  row.innerHTML = `<div class="bubble">${escHtml(text)}</div>`;
+  chatMessages.appendChild(row);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function sendChat() {
+  const text = chatInput.value.trim();
+  if (!text) return;
+  socket.emit('chat', { text });
+  chatInput.value = '';
+}
+chatSendBtn.onclick = sendChat;
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
+});
+
+socket.on('chat', (msg) => pushChat(msg));
+
+// ============ HELP TOOLTIP ============
+btnHelp.onclick = (e) => {
+  e.stopPropagation();
+  helpTooltip.classList.toggle('hidden');
+};
+document.addEventListener('click', (e) => {
+  if (!helpTooltip.contains(e.target) && e.target !== btnHelp) {
+    helpTooltip.classList.add('hidden');
+  }
+});
+
+// ============ SESLİ SOHBET (WebRTC) ============
+const RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ]
+};
+
+function setVoiceBtnState(state) {
+  // state: 'off' | 'on' | 'requesting'
+  btnVoice.classList.remove('active', 'requesting');
+  if (state === 'on') {
+    btnVoice.classList.add('active');
+    btnVoice.querySelector('.voice-state').textContent = 'Açık';
+    btnVoice.setAttribute('aria-pressed', 'true');
+  } else if (state === 'requesting') {
+    btnVoice.classList.add('requesting');
+    btnVoice.querySelector('.voice-state').textContent = '...';
+  } else {
+    btnVoice.querySelector('.voice-state').textContent = 'Sesli';
+    btnVoice.setAttribute('aria-pressed', 'false');
+  }
+}
+
+async function toggleVoice() {
+  if (voiceLocal) {
+    stopVoice();
+    return;
+  }
+  setVoiceBtnState('requesting');
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false
+    });
+  } catch (err) {
+    setVoiceBtnState('off');
+    pushChatSystem('Mikrofon izni reddedildi.');
+    return;
+  }
+  voiceLocal = true;
+  setVoiceBtnState('on');
+  socket.emit('voice-status', { enabled: true });
+  ensurePeer();
+  for (const t of localStream.getAudioTracks()) peerConn.addTrack(t, localStream);
+  watchLocalLevel();
+
+  // Eğer karşı taraf da sesli açıksa, ben (beyaz olan) teklif başlatırım
+  if (voiceRemote && myColor === 'white') {
+    await sendOffer();
+  }
+}
+
+function stopVoice() {
+  voiceLocal = false;
+  setVoiceBtnState('off');
+  socket.emit('voice-status', { enabled: false });
+  if (localStream) {
+    localStream.getTracks().forEach(t => t.stop());
+    localStream = null;
+  }
+  closePeer();
+  setSpeaking(myColor, false);
+}
+
+function ensurePeer() {
+  if (peerConn) return peerConn;
+  peerConn = new RTCPeerConnection(RTC_CONFIG);
+  peerConn.onicecandidate = (e) => {
+    if (e.candidate) socket.emit('webrtc-ice', { candidate: e.candidate });
+  };
+  peerConn.ontrack = (e) => {
+    const [stream] = e.streams;
+    remoteAudio.srcObject = stream;
+    watchRemoteLevel(stream);
+  };
+  peerConn.onconnectionstatechange = () => {
+    if (!peerConn) return;
+    if (['failed', 'disconnected', 'closed'].includes(peerConn.connectionState)) {
+      // bağlantı koptu → temizle ama mic'i kapatma
+      setSpeaking(otherColor(), false);
+    }
+  };
+  return peerConn;
+}
+function otherColor() {
+  return myColor === 'white' ? 'black' : 'white';
+}
+function closePeer() {
+  if (peerConn) {
+    try { peerConn.close(); } catch (e) {}
+    peerConn = null;
+  }
+  remoteAudio.srcObject = null;
+}
+
+async function sendOffer() {
+  ensurePeer();
+  try {
+    const offer = await peerConn.createOffer();
+    await peerConn.setLocalDescription(offer);
+    socket.emit('webrtc-offer', { sdp: offer });
+  } catch (e) { console.error('offer error', e); }
+}
+
+socket.on('voice-status', ({ enabled }) => {
+  voiceRemote = !!enabled;
+  if (!voiceRemote) {
+    closePeer();
+    setSpeaking(otherColor(), false);
+  } else if (voiceLocal && myColor === 'white') {
+    sendOffer();
+  }
+});
+socket.on('webrtc-offer', async ({ sdp }) => {
+  if (!voiceLocal) return; // mic açık değilse cevaplama
+  ensurePeer();
+  try {
+    await peerConn.setRemoteDescription(sdp);
+    const answer = await peerConn.createAnswer();
+    await peerConn.setLocalDescription(answer);
+    socket.emit('webrtc-answer', { sdp: answer });
+  } catch (e) { console.error('answer error', e); }
+});
+socket.on('webrtc-answer', async ({ sdp }) => {
+  if (!peerConn) return;
+  try { await peerConn.setRemoteDescription(sdp); }
+  catch (e) { console.error('setRemote answer', e); }
+});
+socket.on('webrtc-ice', async ({ candidate }) => {
+  if (!peerConn || !candidate) return;
+  try { await peerConn.addIceCandidate(candidate); }
+  catch (e) { console.error('ice add', e); }
+});
+
+btnVoice.onclick = toggleVoice;
+
+// ============ KONUŞMA ALGILAMA ============
+function ensureAudioCtx() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+function makeAnalyser(stream) {
+  const ctx = ensureAudioCtx();
+  const src = ctx.createMediaStreamSource(stream);
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.5;
+  src.connect(analyser);
+  return analyser;
+}
+function watchLocalLevel() {
+  if (!localStream) return;
+  speakAnalysers.local = makeAnalyser(localStream);
+}
+function watchRemoteLevel(stream) {
+  speakAnalysers.remote = makeAnalyser(stream);
+}
+const SPEAK_THRESHOLD = 18; // RMS eşiği
+function pollLevels() {
+  const buf = new Uint8Array(256);
+  function readLevel(an) {
+    if (!an) return 0;
+    an.getByteFrequencyData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i];
+    return sum / buf.length;
+  }
+  const lLvl = readLevel(speakAnalysers.local);
+  const rLvl = readLevel(speakAnalysers.remote);
+  setSpeaking(myColor, lLvl > SPEAK_THRESHOLD);
+  setSpeaking(otherColor(), rLvl > SPEAK_THRESHOLD);
+}
+setInterval(pollLevels, 120);
+
+function setSpeaking(color, on) {
+  if (!color) return;
+  const idx = color === 'white' ? 1 : 2;
+  const card = document.getElementById('player-card-' + idx);
+  if (card) card.classList.toggle('speaking', !!on);
+}
+
 // ============ SOCKET EVENTS ============
 socket.on('state', ({ state, validSources: vs, players, settings, turnDeadline }) => {
   gameState = state;
@@ -896,7 +1151,7 @@ socket.on('state', ({ state, validSources: vs, players, settings, turnDeadline }
 });
 
 socket.on('disconnect', () => {
-  messageEl.textContent = 'Sunucu bağlantısı koptu.';
+  pushChatSystem('Sunucu bağlantısı koptu.');
 });
 
 // ============ LOBBY INIT ============

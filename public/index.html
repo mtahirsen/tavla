@@ -104,7 +104,10 @@
 
     <aside class="panel panel-right">
       <div class="card dice-card">
-        <div class="card-label">Zar</div>
+        <div class="card-label">
+          Zar
+          <button class="help-toggle" id="btn-help" aria-label="Nasıl oynanır">?</button>
+        </div>
         <div class="dice-display" id="dice-display">
           <div class="die-placeholder">—</div>
           <div class="die-placeholder">—</div>
@@ -112,22 +115,43 @@
         <button id="btn-roll" class="btn btn-primary" disabled>Zar At</button>
       </div>
 
-      <div class="card">
-        <div class="card-label">Durum</div>
-        <div class="message" id="message">Bekleniyor…</div>
+      <div class="card chat-card">
+        <div class="chat-head">
+          <span class="card-label" style="margin: 0;">Sohbet</span>
+          <button id="btn-voice" class="voice-btn" title="Sesli sohbet" aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="22"/>
+            </svg>
+            <span class="voice-state">Sesli</span>
+          </button>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-row">
+          <input id="chat-input" class="chat-input" placeholder="mesaj yaz…" maxlength="240" autocomplete="off" />
+          <button id="btn-chat-send" class="chat-send" aria-label="Gönder">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M13 6l6 6-6 6"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
-      <div class="card help">
-        <div class="card-label">Nasıl Oynanır</div>
+      <button id="btn-resign" class="btn btn-ghost btn-sm">Odadan Çık</button>
+
+      <div id="help-tooltip" class="help-tooltip hidden">
+        <div class="help-tooltip-arrow"></div>
         <ul>
           <li><b>Zar At</b>, sonra <b>pulu tutup hedef noktaya sürükle</b>.</li>
           <li>Sürüklerken bırakabileceğin yerler parlar.</li>
           <li>Çift gelirse 4 hamle hakkın olur.</li>
           <li>Tüm pulların evde toplanınca dışarı toplarsın.</li>
+          <li>3-5 attığında pulu 8 hamleye birden sürükleyebilirsin.</li>
         </ul>
       </div>
 
-      <button id="btn-resign" class="btn btn-ghost btn-sm">Odadan Çık</button>
+      <audio id="remote-audio" autoplay playsinline></audio>
     </aside>
   </div>
 
