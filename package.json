@@ -1,0 +1,19 @@
+{
+  "name": "tavla",
+  "version": "1.0.0",
+  "description": "Online iki kişilik klasik tavla — Node + Socket.io + Canvas",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["backgammon", "tavla", "multiplayer", "socket.io"],
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3"
+  }
+}

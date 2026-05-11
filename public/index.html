@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1280" />
+  <title>Tavla — Klasik</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="bg-aurora"></div>
+
+  <!-- Lobby (oda kur / katıl) -->
+  <div id="lobby" class="lobby">
+    <div class="lobby-card">
+      <div class="brand-mark"></div>
+      <h1 class="brand">tavla</h1>
+      <p class="subtitle">iki kişilik · klasik kurallar</p>
+
+      <div class="profile">
+        <input id="nick-input" class="input input-nick" maxlength="16" placeholder="adın" autocomplete="off" />
+        <div class="avatar-grid" id="avatar-grid"></div>
+      </div>
+
+      <div class="settings-section" id="create-section">
+        <div class="settings-row">
+          <span class="settings-label">Hamle süresi</span>
+          <div class="chips" id="timer-chips">
+            <button class="chip active" data-timer="0">yok</button>
+            <button class="chip" data-timer="30">30s</button>
+            <button class="chip" data-timer="60">60s</button>
+            <button class="chip" data-timer="120">2dk</button>
+          </div>
+        </div>
+        <button id="btn-create" class="btn btn-primary">Yeni Oda Kur</button>
+      </div>
+
+      <div class="lobby-divider"><span>veya</span></div>
+
+      <div class="lobby-section">
+        <input id="join-code" class="input" maxlength="6" placeholder="ODA KODU" autocomplete="off" />
+        <button id="btn-join" class="btn">Odaya Katıl</button>
+      </div>
+
+      <p id="lobby-error" class="error"></p>
+    </div>
+  </div>
+
+  <!-- Oyun ekranı -->
+  <div id="game" class="game hidden">
+    <aside class="panel panel-left">
+      <div class="brand-small">tavla</div>
+
+      <div class="card">
+        <div class="card-label">Oda Kodu</div>
+        <div class="room-code" id="room-code">—</div>
+        <button id="btn-copy" class="btn btn-ghost btn-sm">Kodu Kopyala</button>
+      </div>
+
+      <div class="card player-card" id="player-card-1">
+        <div class="player-card-head">
+          <div class="player-avatar" id="p1-avatar">🦊</div>
+          <div class="player-info">
+            <div class="player-nick" id="p1-nick">—</div>
+            <div class="player-meta">
+              <span class="checker-mini" id="p1-checker"></span>
+              <span id="p1-color">—</span>
+              <span class="you-badge hidden" id="p1-you">SEN</span>
+            </div>
+          </div>
+        </div>
+        <div class="timer hidden" id="p1-timer">00:00</div>
+      </div>
+
+      <div class="card player-card" id="player-card-2">
+        <div class="player-card-head">
+          <div class="player-avatar" id="p2-avatar">—</div>
+          <div class="player-info">
+            <div class="player-nick" id="p2-nick">bekleniyor…</div>
+            <div class="player-meta">
+              <span class="checker-mini" id="p2-checker"></span>
+              <span id="p2-color">—</span>
+              <span class="you-badge hidden" id="p2-you">SEN</span>
+            </div>
+          </div>
+        </div>
+        <div class="timer hidden" id="p2-timer">00:00</div>
+      </div>
+    </aside>
+
+    <main class="board-wrap">
+      <canvas id="board" width="1200" height="700"></canvas>
+      <div id="winner-overlay" class="winner-overlay hidden">
+        <div class="winner-card">
+          <div class="winner-label">KAZANAN</div>
+          <div class="winner-name" id="winner-name">—</div>
+          <button id="btn-new-game" class="btn btn-primary">Yeni Oyun</button>
+        </div>
+      </div>
+    </main>
+
+    <aside class="panel panel-right">
+      <div class="card dice-card">
+        <div class="card-label">Zar</div>
+        <div class="dice-display" id="dice-display">
+          <div class="die-placeholder">—</div>
+          <div class="die-placeholder">—</div>
+        </div>
+        <button id="btn-roll" class="btn btn-primary" disabled>Zar At</button>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Durum</div>
+        <div class="message" id="message">Bekleniyor…</div>
+      </div>
+
+      <div class="card help">
+        <div class="card-label">Nasıl Oynanır</div>
+        <ul>
+          <li><b>Zar At</b>, sonra <b>pulu tutup hedef noktaya sürükle</b>.</li>
+          <li>Sürüklerken bırakabileceğin yerler parlar.</li>
+          <li>Çift gelirse 4 hamle hakkın olur.</li>
+          <li>Tüm pulların evde toplanınca dışarı toplarsın.</li>
+        </ul>
+      </div>
+
+      <button id="btn-resign" class="btn btn-ghost btn-sm">Odadan Çık</button>
+    </aside>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
