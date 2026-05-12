@@ -50,6 +50,49 @@ let voiceLocal = false;         // benim mikrofonum açık mı
 let voiceRemote = false;        // karşı tarafın durumu (server üzerinden)
 let audioCtx = null;            // konuşma seviyesini ölçmek için
 let speakAnalysers = { local: null, remote: null };
+let lastRollSig = null;         // çift efektini tekrar tetiklememek için
+
+const fxThunder = document.getElementById('fx-thunder');
+const fxText = document.getElementById('fx-text');
+const diceCardEl = document.querySelector('.dice-card');
+
+const DICE_NAMES = ['', 'BİR', 'İKİ', 'ÜÇ', 'DÖRT', 'BEŞ', 'ALTI'];
+
+function triggerDoublesFX(value) {
+  const label = DICE_NAMES[value] || value;
+  fxText.textContent = value === 6 ? `ÇİFT ${label}!` : `ÇİFT ${value}`;
+  fxThunder.classList.remove('active');
+  // reflow → animasyon yeniden tetiklensin
+  void fxThunder.offsetWidth;
+  fxThunder.classList.add('active');
+  canvas.classList.remove('shake');
+  void canvas.offsetWidth;
+  canvas.classList.add('shake');
+  if (diceCardEl) {
+    diceCardEl.classList.remove('fx-flash-card');
+    void diceCardEl.offsetWidth;
+    diceCardEl.classList.add('fx-flash-card');
+  }
+  setTimeout(() => {
+    fxThunder.classList.remove('active');
+    canvas.classList.remove('shake');
+    if (diceCardEl) diceCardEl.classList.remove('fx-flash-card');
+  }, 1300);
+}
+
+function maybeTriggerRollFX() {
+  if (!gameState) return;
+  if (!gameState.rolled || gameState.dice.length !== 2) {
+    lastRollSig = null;
+    return;
+  }
+  const sig = gameState.dice.join('-');
+  if (sig === lastRollSig) return;
+  lastRollSig = sig;
+  if (gameState.dice[0] === gameState.dice[1]) {
+    triggerDoublesFX(gameState.dice[0]);
+  }
+}
 let dragSource = null;            // sürüklenen pulun kaynağı (0-23 veya 'bar')
 let dragDestinations = [];        // sürüklenen pulun geçerli hedefleri
 let ghostEl = null;               // imleci takip eden hayalet pul
@@ -1147,6 +1190,7 @@ socket.on('state', ({ state, validSources: vs, players, settings, turnDeadline }
   }
   updateUI();
   tickTimer();
+  maybeTriggerRollFX();
   render();
 });
 
